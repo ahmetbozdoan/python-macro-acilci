@@ -16,7 +16,7 @@ def main():
     # EXE dosyası oluşturuluyor
     print("EXE dosyası oluşturuluyor...")
     subprocess.check_call([
-        "pyinstaller",
+        sys.executable, "-m", "PyInstaller",
         "--onefile",
         "--windowed",
         "--name", "Acilci",

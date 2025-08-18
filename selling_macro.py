@@ -5,7 +5,7 @@ import threading
 import pyautogui
 import keyboard
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QPushButton, QVBoxLayout, 
-                            QWidget, QLabel, QCheckBox, QHBoxLayout, QLineEdit)
+                            QWidget, QLabel, QCheckBox, QHBoxLayout, QLineEdit, QSpinBox)
 from PyQt5.QtCore import Qt, pyqtSignal, QObject
 
 class MacroSignals(QObject):
@@ -13,13 +13,14 @@ class MacroSignals(QObject):
     status_update = pyqtSignal(str)
 
 class Macro(threading.Thread):
-    def __init__(self, message="ACİL İTEMLERİNİZ ALINIR"):
+    def __init__(self, message="ACİL İTEMLERİNİZ ALINIR", interval_seconds=1.0):
         super().__init__()
         self.running = False
         self.paused = False
         self.signals = MacroSignals()
         self.daemon = True  # Ana program kapandığında thread'in de kapanması için
         self.message = message
+        self.interval_seconds = interval_seconds
     
     def run(self):
         self.running = True
@@ -47,8 +48,8 @@ class Macro(threading.Thread):
                     time.sleep(random.uniform(0.1, 0.2))
                     keyboard.press_and_release('enter')
                     
-                    # İnsan gibi görünmesi için random bekleme süresi (1-1.5 saniye)
-                    wait_time = random.uniform(1.0, 1.5)
+                    # Kullanıcının belirlediği saniye aralığında bekleme
+                    wait_time = random.uniform(self.interval_seconds, self.interval_seconds + 0.5)
                     self.signals.status_update.emit(f"Sonraki mesaja {wait_time:.1f} saniye...")
                     time.sleep(wait_time)
                     
@@ -72,6 +73,9 @@ class Macro(threading.Thread):
     
     def set_message(self, message):
         self.message = message
+    
+    def set_interval(self, interval_seconds):
+        self.interval_seconds = interval_seconds
 
 class MacroApp(QMainWindow):
     def __init__(self):
@@ -82,7 +86,7 @@ class MacroApp(QMainWindow):
     def init_ui(self):
         # Ana pencere ayarları
         self.setWindowTitle("Acilci")
-        self.setGeometry(100, 100, 400, 250)  # Daha yüksek pencere
+        self.setGeometry(100, 100, 400, 300)  # Yeni input alanı için daha yüksek pencere
         
         # Widget'lar
         central_widget = QWidget()
@@ -102,7 +106,7 @@ class MacroApp(QMainWindow):
         
         info_label = QLabel("Bu uygulama ENTER tuşuna basıp aşağıdaki mesajı yazıp\n"
                            "tekrar ENTER'e basar ve her mesajdan sonra boş satır bırakır.\n"
-                           "İşlem yaklaşık her 1-1.5 saniyede bir tekrarlanır.")
+                           "Mesaj gönderme aralığını kendiniz ayarlayabilirsiniz.")
         info_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(info_label)
         
@@ -114,6 +118,18 @@ class MacroApp(QMainWindow):
         message_layout.addWidget(message_label)
         message_layout.addWidget(self.message_input)
         layout.addLayout(message_layout)
+        
+        # Saniye aralığı giriş alanı
+        interval_layout = QHBoxLayout()
+        interval_label = QLabel("Mesaj Aralığı (saniye):")
+        self.interval_spinbox = QSpinBox()
+        self.interval_spinbox.setMinimum(1)
+        self.interval_spinbox.setMaximum(60)
+        self.interval_spinbox.setValue(1)
+        self.interval_spinbox.setToolTip("Mesajlar arasındaki bekleme süresi (1-60 saniye)")
+        interval_layout.addWidget(interval_label)
+        interval_layout.addWidget(self.interval_spinbox)
+        layout.addLayout(interval_layout)
         
         # Butonlar için ayrı bir layout oluştur
         button_layout = QHBoxLayout()
@@ -159,8 +175,9 @@ class MacroApp(QMainWindow):
             self.update_status("Hata: Mesaj boş olamaz!")
             return
             
-        # Mesajı güncelle
+        # Mesajı ve saniye aralığını güncelle
         self.macro.set_message(message)
+        self.macro.set_interval(self.interval_spinbox.value())
         
         if not self.macro.running:
             self.macro.start()
@@ -171,22 +188,25 @@ class MacroApp(QMainWindow):
         self.pause_button.setEnabled(True)
         self.stop_button.setEnabled(True)
         self.message_input.setEnabled(False)  # Çalışırken mesaj değiştirilemesin
+        self.interval_spinbox.setEnabled(False)  # Çalışırken aralık değiştirilemesin
     
     def pause_macro(self):
         if self.macro.running and not self.macro.paused:
             self.macro.pause()
             self.pause_button.setText("Devam Et")
             self.message_input.setEnabled(True)  # Duraklattığında mesaj değiştirilebilsin
+            self.interval_spinbox.setEnabled(True)  # Duraklattığında aralık değiştirilebilsin
         else:
             self.macro.resume()
             self.pause_button.setText("Duraklat")
             self.message_input.setEnabled(False)  # Devam ettiğinde mesaj değiştirilemesin
+            self.interval_spinbox.setEnabled(False)  # Devam ettiğinde aralık değiştirilemesin
     
     def stop_macro(self):
         if self.macro.running:
             self.macro.stop()
             # Yeni bir nesne oluştur
-            self.macro = Macro(self.message_input.text())
+            self.macro = Macro(self.message_input.text(), self.interval_spinbox.value())
             self.macro.signals.status_update.connect(self.update_status)
             
             self.start_button.setEnabled(True)
@@ -194,6 +214,7 @@ class MacroApp(QMainWindow):
             self.pause_button.setText("Duraklat")
             self.stop_button.setEnabled(False)
             self.message_input.setEnabled(True)  # Durdurduğunda mesaj değiştirilebilsin
+            self.interval_spinbox.setEnabled(True)  # Durdurduğunda aralık değiştirilebilsin
     
     def emergency_stop(self):
         self.stop_macro()
